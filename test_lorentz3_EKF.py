@@ -2,8 +2,8 @@ import numpy as np
 from src.classes import Lorentz3
 import matplotlib.pyplot as plt
 ic_seed=0
-sigma_o = 1.
-sigma_b= 3.
+sigma_o = 1.0
+sigma_b= 3.0
 T=1000
 discard_len=1000
 sigma = 10.; beta = 8/3; rho = 28.
@@ -13,13 +13,14 @@ x_o,x_t = np.ascontiguousarray(model.run(T+1,discard_len))
 H_obs=np.eye(3)
 y_o = model.observe(H_obs,x_o) #
 P_b=sigma_b**2 * np.eye(3)
+Q_b=sigma_b**2 * np.eye(3)
 R_o=sigma_o**2 * np.eye(H_obs.shape[0])
-x_a,x_b,d_ob,d_ab,d_oa=model.optimal_interpolation(H_obs,y_o,P_b,R_o,x_t,sigma_b,T)
+x_a,x_b,d_ob=model.EKF(H_obs,y_o,P_b,R_o,Q_b,x_t,sigma_b,T)
 print(np.mean((x_a-x_t[1:])**2))
 print(np.mean((x_b-x_t[1:])**2))
 trace_Pb=np.zeros(T)
 for i in range(T):
-    diff=(x_a[i]-x_t[i]).reshape(1,-1)
+    diff=(x_b[i]-x_a[i]).reshape(1,-1)
     trace_Pb[i]= np.trace(diff.T @ diff)
 plt.rcParams.update({'font.size': 22})
 fig, axs = plt.subplots(3, 1, sharex = True,figsize=(10,10))
