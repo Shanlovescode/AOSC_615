@@ -6,6 +6,8 @@ class Lorentz3():
     def __init__(self, dt=0.01, int_steps=10, sigma=10.,beta=8 / 3, rho=28., ic=np.array([]), ic_seed=0,obs_noise=1e-5,noise_seed=10):
         self.params = np.array([sigma, rho, beta])
         self.dxdt = lorentz3_dxdt
+        self.TLM =lorentz3_TLM
+        self.dPdt=general_dPdt
         self.dt = dt
         self.int_steps = int_steps
         if ic.size == 0:
@@ -22,9 +24,46 @@ class Lorentz3():
         output = run_model(self.state, T, self.dxdt, self.params,self.dt, discard_len, self.int_steps)
         self.state = output[-1]
         rng = np.random.default_rng(self.noise_seed)
-        return output + self.obs_noise* rng.normal(size=output.shape)
+        return output + self.obs_noise* rng.normal(size=output.shape),output
 
     def observe(self, H_op, x_o):
         return x_o @ H_op.T
+    def optimal_interpolation(self,H_op,y_o,P_b,R_o,x_t,sigma_b,T):
+        K_oi = P_b @ H_op.T @ np.linalg.inv(H_op @ P_b @ H_op.T + R_o)
+        x_b = np.zeros((T+1,3))
+        x_b_non_DA = np.zeros((T + 1, 3))
+        x_a = np.zeros((T+1,3))
+        d_ob=np.zeros((T+1,y_o.shape[1]))
+        d_ab= np.zeros((T + 1, y_o.shape[1]))
+        d_oa = np.zeros((T + 1, y_o.shape[1]))
+        x_a[0]=x_t[0]+ sigma_b * np.random.normal(size=(3,))
+        x_b_non_DA[0] = x_a[0]
+        for i in range(T):
+            x_b[i+1] = run_step(x_a[i],self.dxdt,self.dt,self.int_steps,self.params)
+            x_b_non_DA[i+1]=run_step(x_b_non_DA[i],self.dxdt,self.dt,self.int_steps,self.params)
+            d_ob[i+1] = y_o[i+1]-x_b[i+1]@H_op.T
+            x_a[i+1] = x_b[i+1]+d_ob[i+1]@K_oi.T
+            d_ab[i+1] = x_a[i+1]@H_op.T-x_b[i+1]@H_op.T
+            d_oa[i+1] = y_o[i+1]-x_a[i+1]@H_op.T
+        return x_a[1:],x_b_non_DA[1:],d_ob[1:],d_ab[1:],d_oa[1:]
+
+    def EKF(self,H_op,y_o,P_b_0,R_o,Qb,x_t,sigma_b,T):
+        x_b = np.zeros((T+1,3))
+        x_b_non_DA = np.zeros((T + 1, 3))
+        x_a = np.zeros((T+1,3))
+        d_ob=np.zeros((T+1,y_o.shape[1]))
+        x_a[0]=x_t[0]+ sigma_b * np.random.normal(size=(3,))
+        x_b_non_DA[0] = x_t[0] + sigma_b * np.random.normal(size=(3,))
+        P_b=np.zeros((T+1,3,3))
+        P_a = np.zeros((T+1, 3, 3))
+        P_a[0]=P_b_0
+        for i in range(T):
+            x_b[i+1],P_b[i+1] = run_step_EK(x_a[i],P_a[i],self.dxdt,self.dPdt, self.TLM,self.dt,self.int_steps,self.params,Qb)
+            x_b_non_DA[i+1]=run_step(x_b_non_DA[i],self.dxdt,self.dt,self.int_steps,self.params)
+            d_ob[i+1] = y_o[i+1]-x_b[i+1]@H_op.T
+            K_oi = P_b[i+1] @ H_op.T @ np.linalg.inv(H_op @ P_b[i+1] @ H_op.T + R_o)
+            x_a[i+1] = x_b[i+1]+d_ob[i+1]@K_oi.T
+            P_a[i+1] = (np.identity(3)-K_oi @ H_op) @ P_b[i+1]
+        return x_a[1:],x_b_non_DA[1:],d_ob[1:]
 
 
