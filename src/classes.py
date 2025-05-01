@@ -6,9 +6,9 @@ class Lorentz3():
     def __init__(self, dt=0.01, int_steps=10, sigma=10.,beta=8 / 3, rho=28., ic=np.array([]), ic_seed=0,obs_noise=1e-5,noise_seed=10):
         self.params = np.array([sigma, rho, beta])
         self.dxdt = lorentz3_dxdt
-        self.dMdt=general_dMdt
+        self.dxMdt=general_dxMdt
         self.TLM =lorentz3_TLM
-        self.dPdt=general_dPdt
+        self.dxPdt=general_dxPdt
         self.dt = dt
         self.int_steps = int_steps
         if ic.size == 0:
@@ -62,7 +62,7 @@ class Lorentz3():
         P_a[0]=P_b_0
         P_b[0] = P_b_0
         for i in range(T):
-            x_b[i+1],P_b[i+1] = run_step_EK(x_a[i],P_a[i],self.dxdt,self.dPdt, self.TLM,self.dt,self.int_steps,self.params,Qb)
+            x_b[i+1],P_b[i+1] = run_step_EK(x_a[i],P_a[i],self.dxPdt, self.dxdt,self.TLM,self.dt,self.int_steps,self.params,Qb)
             x_b_non_DA[i+1]=run_step(x_b_non_DA[i],self.dxdt,self.dt,self.int_steps,self.params)
             d_ob[i+1] = y_o[i+1]-x_b[i+1]@H_op.T
             K_oi = P_b[i+1] @ H_op.T @ np.linalg.inv(H_op @ P_b[i+1] @ H_op.T + R_o)
@@ -87,9 +87,9 @@ class Lorentz3():
             delta_x_TLM[0,:,j] = perturbed_data[j]-data[j]
             delta_x_non_linear[0, :, j] = perturbed_data[j] - data[j]
             for i in range(T):
-                x_TLM[i+1,:,j],M[i+1,:,:,j]=run_step_TLM(np.ascontiguousarray(x_TLM[i,:,j]),np.ascontiguousarray(M[i,:,:,j]),self.dxdt,self.dMdt,self.TLM,self.dt,self.int_steps,self.params)
+                x_TLM[i+1,:,j],M[i+1,:,:,j]=run_step_TLM(np.ascontiguousarray(x_TLM[i,:,j]),np.ascontiguousarray(M[i,:,:,j]),self.dxdt,self.dxMdt,self.TLM,self.dt,self.int_steps,self.params)
                 delta_x_TLM[i+1, :, j]=M[i+1,:,:,j]@delta_x_TLM[0,:,j]
-                x_non_linear[i+1,:,j],delta_x_non_linear[i+1,:,j]=run_step_non_linear(np.ascontiguousarray(x_non_linear[i, :, j]), np.ascontiguousarray(delta_x_non_linear[i, :, j]), self.dxdt, self.dMdt, self.TLM, self.dt, self.int_steps,self.params)
+                x_non_linear[i+1,:,j],delta_x_non_linear[i+1,:,j]=run_step_non_linear(np.ascontiguousarray(x_non_linear[i, :, j]), np.ascontiguousarray(delta_x_non_linear[i, :, j]), self.dxdt, self.dxMdt, self.TLM, self.dt, self.int_steps,self.params)
         return delta_x_TLM,delta_x_non_linear
 
 

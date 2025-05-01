@@ -12,23 +12,25 @@ def rk4(x, dxdt, dt, params):
     xnext = x + 1 / 6 * dt * (k1 + 2 * k2 + 2 * k3 + k4)
     return xnext
 @njit()
-def rk4_dPdt(P,dPdt,F,Qb,dt,params):
-    k1 = dPdt(P, F,params,Qb)
-    k2 = dPdt(P + k1 / 2 * dt, F,params,Qb)
-    k3 = dPdt(P + k2 / 2 * dt, F,params,Qb)
-    k4 = dPdt(P + dt * k3, F,params,Qb)
-    Pnext = P + 1 / 6 * dt * (k1 + 2 * k2 + 2 * k3 + k4)
-    return Pnext
+def rk4_dxPdt(x,P,dxPdt,dxdt,FTLM,Qb,dt,params):
+    k1x, k1p = dxPdt(x,P,dxdt,FTLM,params,Qb)
+    k2x, k2p = dxPdt(x + k1x/2 * dt,P + k1p / 2 * dt,dxdt,FTLM,params,Qb)
+    k3x, k3p = dxPdt(x + k2x/2 * dt,P + k2p / 2 * dt,dxdt,FTLM,params,Qb)
+    k4x, k4p = dxPdt(x + dt*k3x, P + dt * k3p, dxdt,FTLM,params,Qb)
+    xnext= x + 1 / 6 * dt * (k1x + 2 * k2x + 2 * k3x + k4x)
+    Pnext = P + 1 / 6 * dt * (k1p + 2 * k2p + 2 * k3p + k4p)
+    return xnext, Pnext
 
 
 @njit()
-def rk4_dMdt(M, dMdt, F, dt, params):
-    k1 = dMdt(M, F, params)
-    k2 = dMdt(M + k1 / 2 * dt, F, params)
-    k3 = dMdt(M + k2 / 2 * dt, F, params)
-    k4 = dMdt(M + dt * k3, F, params)
-    Mnext = M+ 1 / 6 * dt * (k1 + 2 * k2 + 2 * k3 + k4)
-    return Mnext
+def rk4_dxMdt(x,M,dxMdt,dxdt,FTLM,dt,params):
+    k1x, k1m = dxMdt(x,M,dxdt,FTLM,params)
+    k2x, k2m = dxMdt(x + k1x/2 * dt,M + k1m / 2 * dt,dxdt,FTLM,params)
+    k3x, k3m = dxMdt(x + k2x/2 * dt,M + k2m / 2 * dt,dxdt,FTLM,params)
+    k4x, k4m = dxMdt(x + dt*k3x, M + dt * k3m, dxdt,FTLM,params)
+    xnext = x + 1 / 6 * dt * (k1x + 2 * k2x + 2 * k3x + k4x)
+    Mnext = M+ 1 / 6 * dt * (k1m + 2 * k2m + 2 * k3m + k4m)
+    return xnext,Mnext
 
 
 @njit()
@@ -57,34 +59,32 @@ def lorentz3_TLM(x, params):
                      [x[1],x[0],- params[2]]])
 
 @njit()
-def general_dPdt(P,F,params,Qb):
-    dpdt=F @ P + P.T @ F.T + Qb
-    return dpdt
+def general_dxPdt(x,P,dxdt,FTLM,params,Qb):
+    F=FTLM(x,params)
+    dxdtout=dxdt(x,params)
+    dpdtout =F @ P + P.T @ F.T + Qb
+    return dxdtout, dpdtout
 
 @njit()
-def general_dMdt(M,F,params):
-    dmdt=F @ M
-    return dmdt
+def general_dxMdt(x,M,dxdt,FTLM,params):
+    F=FTLM(x,params)
+    dxdtout=dxdt(x,params)
+    dmdtout=F @ M
+    return dxdtout,dmdtout
 @njit()
-def run_step_EK(x,P,dxdt,dPdt,FTLM,dt,int_steps,params,Qb):
+def run_step_EK(x,P,dxPdt,dxdt,FTLM,dt,int_steps,params,Qb):
     for i in range(int_steps):
-        F = FTLM(x, params)
-        x = rk4(x, dxdt, dt, params)
-        P = rk4_dPdt(P,dPdt,F,Qb,dt,params)
+       x, P = rk4_dxPdt(x,P,dxPdt,dxdt,FTLM,Qb,dt,params)
     return x,P
 
 @njit()
-def run_step_TLM(x,M,dxdt,dMdt,FTLM,dt,int_steps,params):
+def run_step_TLM(x,M,dxdt,dxMdt,FTLM,dt,int_steps,params):
     for i in range(int_steps):
-        F = FTLM(x, params)
-        x = rk4(x, dxdt, dt, params)
-        M = rk4_dMdt(M,dMdt,F,dt,params)
+        x,M = rk4_dxMdt(x,M,dxMdt,dxdt,FTLM,dt,params)
     return x,M
 
 @njit()
-def run_step_non_linear(x,dx,dxdt,dMdt,FTLM,dt,int_steps,params):
+def run_step_non_linear(x,dx,dxdt,dxMdt,FTLM,dt,int_steps,params):
     for i in range(int_steps):
-        F = FTLM(x, params)
-        x = rk4(x, dxdt, dt, params)
-        dx = rk4_dMdt(dx,dMdt,F,dt,params)
-    return x,dx
+        x, dx = rk4_dxMdt(x, dx, dxMdt, dxdt, FTLM, dt, params)
+    return x, dx
