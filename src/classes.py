@@ -6,6 +6,7 @@ class Lorentz3():
     def __init__(self, dt=0.01, int_steps=10, sigma=10.,beta=8 / 3, rho=28., ic=np.array([]), ic_seed=0,obs_noise=1e-5,noise_seed=10):
         self.params = np.array([sigma, rho, beta])
         self.dxdt = lorentz3_dxdt
+        self.dMdt=general_dMdt
         self.TLM =lorentz3_TLM
         self.dPdt=general_dPdt
         self.dt = dt
@@ -52,11 +53,14 @@ class Lorentz3():
         x_b_non_DA = np.zeros((T + 1, 3))
         x_a = np.zeros((T+1,3))
         d_ob=np.zeros((T+1,y_o.shape[1]))
+        d_ab = np.zeros((T + 1, y_o.shape[1]))
+        d_oa = np.zeros((T + 1, y_o.shape[1]))
         x_a[0]=x_t[0]+ sigma_b * np.random.normal(size=(3,))
         x_b_non_DA[0] = x_t[0] + sigma_b * np.random.normal(size=(3,))
         P_b=np.zeros((T+1,3,3))
         P_a = np.zeros((T+1, 3, 3))
         P_a[0]=P_b_0
+        P_b[0] = P_b_0
         for i in range(T):
             x_b[i+1],P_b[i+1] = run_step_EK(x_a[i],P_a[i],self.dxdt,self.dPdt, self.TLM,self.dt,self.int_steps,self.params,Qb)
             x_b_non_DA[i+1]=run_step(x_b_non_DA[i],self.dxdt,self.dt,self.int_steps,self.params)
@@ -64,6 +68,28 @@ class Lorentz3():
             K_oi = P_b[i+1] @ H_op.T @ np.linalg.inv(H_op @ P_b[i+1] @ H_op.T + R_o)
             x_a[i+1] = x_b[i+1]+d_ob[i+1]@K_oi.T
             P_a[i+1] = (np.identity(3)-K_oi @ H_op) @ P_b[i+1]
-        return x_a[1:],x_b_non_DA[1:],d_ob[1:]
+            d_ab[i + 1] = x_a[i + 1] @ H_op.T - x_b[i + 1] @ H_op.T
+            d_oa[i + 1] = y_o[i + 1] - x_a[i + 1] @ H_op.T
+        return x_a[1:],x_b_non_DA[1:],d_ob[1:],d_ab[1:],d_oa[1:],P_b,P_a
+    def var_TLM(self,data,T=10,seed=1,sigma_p=0.1):
+        M=np.zeros((T+1,3,3,data.shape[0]))
+        x_TLM=np.zeros((T+1,3,data.shape[0]))
+        x_non_linear=np.zeros((T+1,3,data.shape[0]))
+        delta_x_non_linear= np.zeros((T+1, 3, data.shape[0]))
+        delta_x_TLM = np.zeros((T+1, 3, data.shape[0]))
+        rng = np.random.default_rng(seed)
+        perturbed_data=data+sigma_p*rng.normal(size=data.shape)
+        print(data.shape)
+        for j in range(data.shape[0]):
+            M[0,:,:,j] = np.array([[1.0,0,0],[0,1.0,0],[0,0,1.0]])
+            x_TLM[0,:,j] = data[j]
+            x_non_linear[0,:,j] = data[j]
+            delta_x_TLM[0,:,j] = perturbed_data[j]-data[j]
+            delta_x_non_linear[0, :, j] = perturbed_data[j] - data[j]
+            for i in range(T):
+                x_TLM[i+1,:,j],M[i+1,:,:,j]=run_step_TLM(np.ascontiguousarray(x_TLM[i,:,j]),np.ascontiguousarray(M[i,:,:,j]),self.dxdt,self.dMdt,self.TLM,self.dt,self.int_steps,self.params)
+                delta_x_TLM[i+1, :, j]=M[i+1,:,:,j]@delta_x_TLM[0,:,j]
+                x_non_linear[i+1,:,j],delta_x_non_linear[i+1,:,j]=run_step_non_linear(np.ascontiguousarray(x_non_linear[i, :, j]), np.ascontiguousarray(delta_x_non_linear[i, :, j]), self.dxdt, self.dMdt, self.TLM, self.dt, self.int_steps,self.params)
+        return delta_x_TLM,delta_x_non_linear
 
 
