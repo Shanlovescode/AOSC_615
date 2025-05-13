@@ -41,6 +41,13 @@ def run_model(x, T, dxdt, params, dt, discard_len,int_steps):
         output[i+1] = run_step(output[i],dxdt,dt,int_steps,params)
     return output[discard_len:]
 
+@njit(parallel = False)
+def run_array(ic_array, dxdt, int_steps, h, params):
+    model_output = np.zeros(ic_array.shape)
+    for i in range(ic_array.shape[0]):
+        model_output[i] = run_step(ic_array[i], dxdt, int_steps, h, params)
+    return model_output
+
 @njit()
 def run_step(x,dxdt,dt,int_steps,params):
     for i in range(int_steps):
